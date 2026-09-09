@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skill-credentials"
+version = "0.1.1"
+description = "Direct macOS Keychain access for local skill scripts"
+requires-python = ">=3.10"
+dependencies = ["keyring==25.7.0"]
+
+[project.scripts]
+skill-credentials = "skill_credentials:main"
+
+[tool.setuptools]
+py-modules = ["skill_credentials"]
+package-dir = {"" = "scripts"}

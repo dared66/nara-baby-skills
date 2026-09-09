@@ -1,0 +1,4 @@
+interface:
+  display_name: "Nara Baby"
+  short_description: "Read and log Nara Baby activities and timers"
+  default_prompt: "Use $nara-baby to summarize my baby's latest feeds, sleep, and diaper changes."
