@@ -29,7 +29,7 @@ For agent-independent commands, use `python3 scripts/run.py` from the skill fold
 
 The Codex copy has the same script under `~/.codex/skills/nara-baby/scripts/`. `children` retrieves names and keys from the family child-profile endpoint. `configure --name NAME` selects a verified profile by name. `history` uses the saved child or an explicit child key and supports `--family`, `--type`, `--limit`, and `--timezone`. Multiple families require explicit selection. `setup` and `forget` in the Nara CLI delegate to the shared credential library; run setup locally and forget only on a removal request.
 
-For authorized logging or timer actions, use a short-lived Python script with the skill scripts directory on its import path:
+For bottle logging, use the self-contained `log-bottle` command in SKILL.md. For other authorized logging or timer actions, use a short-lived Python script with the skill scripts directory on its import path:
 
 ```python
 from nara_client import connected_client
@@ -42,7 +42,7 @@ with connected_client(family=verified_family, child=verified_child) as api:
 # Print only the requested filtered activity result, never the client or secrets.
 ```
 
-The wrapper loads credentials inside the process, mutes upstream logs/output, applies request timeouts, disallows redirects, disables inherited proxies/.netrc, preserves selection on reauthentication, and clears client credential references on exit. Raw authentication/HTTP exceptions become a fixed error. It does not guarantee memory zeroization or isolation from an agent controlling that process. Use a dedicated process, not a multithreaded Hermes import. The CLI currently implements reads; API logging helpers require `connected_client(..., allow_writes=True)` and retain the numeric/retry limitations below.
+The wrapper loads credentials inside the process, mutes upstream logs/output, applies request timeouts, disallows redirects, disables inherited proxies/.netrc, preserves selection on reauthentication, and clears client credential references on exit. Raw authentication/HTTP exceptions become a fixed error. It does not guarantee memory zeroization or isolation from an agent controlling that process. Use a dedicated process, not a multithreaded Hermes import. The CLI implements reads and verified bottle logging; other API logging helpers require `connected_client(..., allow_writes=True)` and retain the numeric/retry limitations below.
 
 Timezone priority: per-record `tz` (where supported), constructor `timezone_name`, `NARA_TIMEZONE`, then the timezone saved during onboarding (required if no override is provided). Zones are validated with `zoneinfo`. Metadata injection does not shift epoch timestamps. `epoch_ms` interprets naive local datetimes; explicit offsets already specify an instant. Nonexistent spring-forward times are rejected; repeated fall-back times require an explicit offset or `fold=0/1`. Use the same configured zone for calendar-day report boundaries. Existing timer patches preserve the original timezone.
 
@@ -96,7 +96,7 @@ Live timers: `start_sleep()`, `stop_sleep(track_id)`; `start_breast_feed(side)`,
 ## Correctness pitfalls
 
 - Upstream `log_activity()` hardcodes `tz="US/Eastern"`. The bundled timezone adapter overrides this before submission for all manual helpers and timer starts, including methods without a timezone parameter. Use it consistently; do not write an incorrect event and then repair it as the normal path.
-- Bottle/combo/pump manual helpers multiply fluid ounces by 100 and store exponent 1, whereas `trends.py` divides by `10 ** exp`. A nominal 4 oz therefore decodes as 40 in the helper. `stop_pump` uses another encoding. Verify a comparable app-created record before using these encodings; do not claim the correct interpretation has been established by the README. Preserve original units and convert mL to US fl oz only when necessary (`1 fl oz = 29.5735295625 mL`).
+- The installed bottle adapter now uses Num=amount*10 and Exp=1: 2.5 fl oz is 25/10. This matches the observed app encoding and fixes the tenfold error in the upstream bottle helper. The CLI verifies both total and milk-specific decoded volume. The unmodified upstream bottle helper and combo/pump manual helpers multiply fluid ounces by 100 and store exponent 1, whereas `trends.py` divides by `10 ** exp`. A nominal 4 oz therefore decodes as 40 in the helper. `stop_pump` uses another encoding. Verify a comparable app-created record before using these encodings; do not claim the correct interpretation has been established by the README. Preserve original units and convert mL to US fl oz only when necessary (`1 fl oz = 29.5735295625 mL`).
 - Growth numeric encodings also require checking against an app-created measurement. `log_health` switches the type to temperature when temperature is supplied along with medicine; log distinct requested activities separately. No verified medication dose parameter is exposed.
 - `log_breast_feed(side="BOTH")` and combo feed split duration equally. Do not silently use this when per-side durations are unknown or unequal.
 - Diaper textures accepted by code: `MUCOUS`, `MUSH`, `PEBBLE`, `RUN`, `SOLID`. Upstream's `Seedy` example is invalid. Colors: `BLACK`, `BROWN`, `GRAY`, `GREEN`, `RED`, `YELLOW`.

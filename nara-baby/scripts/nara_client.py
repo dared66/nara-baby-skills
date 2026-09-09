@@ -150,6 +150,13 @@ def load_api(transport):
                 raise NaraError("Select the intended child before logging an activity.")
             return super().log_activity(*args, **normalize_activity_fields(kwargs))
 
+        def log_bottle_feed(self, breast_milk=True, volume_floz=0, formula_name=None, begin_dt=None, **kwargs):
+            from nara_bottle import bottle_fields
+            fields = bottle_fields(volume_floz, breast_milk, formula_name)
+            if set(fields) & set(kwargs):
+                raise NaraError('Do not override generated bottle volume fields.')
+            return self.log_activity('FEED', begin_dt=begin_dt, **fields, **kwargs)
+
         def get_track(self, track_id):
             # Mobile-created records may exist only in sync2, not RTDB trackz.
             if not isinstance(track_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", track_id):

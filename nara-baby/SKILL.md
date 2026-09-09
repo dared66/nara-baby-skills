@@ -1,13 +1,39 @@
 ---
 name: nara-baby
-description: Read and summarize Nara Baby activity history, log feeds, sleep, diapers, pumping and routines, and manage activity timers through the unofficial Nara Baby Python API. Use for Nara Baby app tracking and integrations.
+description: Nara Baby history and logging; use log-bottle for verified bottle feeds. Also supports sleep, diapers, pumping, routines and timers.
 ---
 
 # Nara Baby
 
 Use the unofficial Python wrapper at https://github.com/jfchenier/nara-baby-tracker-api. It connects to the app's Firebase backend; it is not an official Nara API. Source reviewed at commit `8f0371cd05d112e3217e594473d0e1dd87615b61` on 2026-09-08.
 
-Read [references/api.md](references/api.md) before connecting or constructing an activity. It contains setup, verified method signatures, and source-specific correctness issues that override misleading upstream examples.
+For configured history reads and bottle logging, use the self-contained commands below. Read [references/api.md](references/api.md) for other writes, direct Python API use, timers, troubleshooting, or calculations beyond the CLI display fields.
+
+## Quick bottle logging
+
+For an authorized bottle entry, execute one command from this skill folder (substitute the requested details):
+
+```sh
+python3 scripts/run.py log-bottle --milk breast-milk --amount 2.5 --unit fl-oz --at 2026-01-15T10:30:00-08:00 --expect-child "Baby A"
+```
+
+Use `--milk formula` for formula, with `--formula-name` only when supplied. This command supports fluid ounces in increments of 0.1, without rounding. Resolve the requested date/time in the configured timezone; ask only for missing consequential details. The child name is checked against the selected live profile. The command validates configuration, checks existing bottles at that time, writes once with a stable ID, and verifies the requested fields and decoded amount through fresh sync. A `saved` or `already_recorded` result with `verified: true` completes the operation. Answer from the receipt's `amount`, `unit`, child and local time.
+
+Do not write a temporary Python script, read implementation files, run a separate onboarding/history check, or separately convert timestamps for this supported command. For a failed or uncertain result, use the same command with **`--check-only`** to inspect without writing; do not rerun a write. A conflicting existing bottle requires inspecting/editing that record rather than creating another. Do not use logging commands for unrequested test entries.
+
+Bottle values are decoded as `Num / 10**Exp`: **2.5 fl oz is Num=25, Exp=1**. The installed adapter repairs the upstream bottle helper's tenfold error. Existing historical records are not automatically rewritten. Combo and pump volume helpers still require the separate schema checks in the reference.
+
+## Quick read on a configured local installation
+
+For "when did the baby last eat?", use `terminal` with its `command` argument to execute this from the installed skill folder:
+
+```sh
+python3 scripts/run.py history --type FEED --limit 1 --display
+```
+
+For recent diapers use `--type DIAPER`; for sleep use `--type SLEEP`. Choose a suitable limit for the requested history. The read command itself checks the saved child, family, timezone, runtime and credentials and fetches live records through the read-only client. A successful history read does not require a separate `onboard` call or API-reference read. If it returns a setup state or error, follow the onboarding steps below; never substitute old chat history.
+
+Use the verified `child` name and `timezone` returned in the result. If the child differs from the explicitly requested child, do not answer from those records: discover and select the correct profile for this request. `display.local_times` contains timezone-aware ISO timestamps; `display.durations` contains readable durations for recorded nursing/pumping sides. Missing duration fields are unknown, not zero; running timers are not completed sessions. Source fields remain available unchanged. Report the latest logged activity, not proof of an unlogged event. An empty result means no matching record was returned. No extra timestamp-conversion command is needed.
 
 ## First run and returning users
 
@@ -15,7 +41,7 @@ Choose the host route first. In Meta Muse, read [references/muse.md](references/
 
 This skill is agent-independent. Any agent that can read these instructions and execute local Python can use it; no Hermes, Codex, MCP, or agent-specific API is required. Credential access currently requires macOS. Read [references/portability.md](references/portability.md) for installation, rebuild, and transfer instructions.
 
-At the first Nara request in a session, run `python3 scripts/run.py onboard` from this skill folder. The script returns JSON describing the next step. Complete onboarding before performing the requested activity operation, then resume that original request.
+For initial setup, missing preferences/credentials, or operations beyond the configured history and bottle commands, run `python3 scripts/run.py onboard` from this skill folder. The script returns JSON describing the next step. Complete onboarding before performing the requested activity operation, then resume that original request.
 
 - `needs_runtime`: run `python3 scripts/rebuild.py` with the host's normal installation permissions. Keep the sibling `keychain-credentials` skill available or specify its path.
 - `needs_credentials`: tell the user that Nara needs a login or access to the existing entry. Ask them to run `python3 scripts/run.py setup` locally in their own terminal. That command privately prompts for credentials and stores them in Keychain. Never ask for a password in chat or pass it through tool input. Existing credentials are reused; access errors are not a reason to overwrite them. Resume `onboard` after the user completes setup.

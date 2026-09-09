@@ -4,6 +4,9 @@ import argparse
 import json
 import sys
 import re
+import math
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from nara_keychain import NaraError, setup_credentials, load_credentials, forget_credentials
 from skill_credentials import CredentialError
@@ -38,6 +41,18 @@ def parser():
             sub.add_argument("--child")
             sub.add_argument("--type", dest="track_type")
             sub.add_argument("--limit", type=int, default=20)
+            sub.add_argument("--display", action="store_true", help="Add local timestamps and readable durations")
+    bottle = subs.add_parser('log-bottle', help='Log and verify a bottle without writing a custom script')
+    bottle.add_argument('--milk', required=True, choices=['breast-milk', 'formula'])
+    bottle.add_argument('--amount', required=True)
+    bottle.add_argument('--unit', required=True, choices=['fl-oz'])
+    bottle.add_argument('--at', required=True, help='Resolved ISO date and time, including date')
+    bottle.add_argument('--expect-child', required=True, help='Expected verified profile name')
+    bottle.add_argument('--formula-name')
+    bottle.add_argument('--family')
+    bottle.add_argument('--child')
+    bottle.add_argument('--timezone')
+    bottle.add_argument('--check-only', action='store_true', help='Read-only: check whether this exact bottle already exists')
     for command_parser in subs.choices.values():
         command_parser.add_argument("--include-internal", action="store_true", help="Developer diagnostics only: include database identifiers")
     return result
@@ -110,10 +125,29 @@ def _execute(args):
     child = getattr(args, "child", None) or config.get("child")
     family = args.family or config.get("family")
     zone = args.timezone or config.get("timezone")
-    if args.command == "history" and not child:
+    if args.command in ('history', 'log-bottle') and not child:
         return {"state": "needs_child_selection", "action": "Run onboard and ask which child to use."}
     if not zone:
         return {"state": "needs_timezone", "action": "Ask for a timezone and run configure --timezone IANA_ZONE."}
+    if args.command == 'log-bottle':
+        from nara_bottle import bottle_fields, log_bottle
+        from nara_timezone import epoch_ms
+        bottle_fields(args.amount, args.milk == 'breast-milk', args.formula_name)
+        if 'T' not in args.at and ' ' not in args.at:
+            raise NaraError('Provide both the resolved date and time for the bottle.')
+        begin = epoch_ms(args.at, zone)
+        with connected_client(family=family, child=child, timezone_name=zone,
+                              allow_writes=not args.check_only) as api:
+            name = api.get_children()[child].get('name')
+            if not isinstance(name, str) or name.casefold() != args.expect_child.casefold():
+                raise NaraError('Selected child does not match the requested name. Resolve the correct profile before logging.')
+            result = log_bottle(api, child=child, begin=begin, amount=args.amount,
+                                breast_milk=args.milk == 'breast-milk',
+                                formula_name=args.formula_name, check_only=args.check_only)
+            if 'track' in result:
+                result['track'] = display_record(result['track'], api.activity_timezone)
+            result.update(child_label=name, timezone=api.activity_timezone)
+        return result
     if args.command == "history" and not 1 <= args.limit <= 1000:
         raise NaraError("History limit must be between 1 and 1000.")
     with connected_client(family=family, child=child if args.command == "history" else None, timezone_name=zone) as api:
@@ -125,7 +159,34 @@ def _execute(args):
                    and (not args.track_type or t.get("type") == args.track_type)]
         records.sort(key=lambda t: t.get("beginDt") or 0, reverse=True)
         return {"family": api.family_key, "child": child, "child_label": api.get_children()[child].get("name"), "timezone": api.activity_timezone,
-                "tracks": records[:args.limit]}
+                "tracks": [display_record(record, api.activity_timezone) if getattr(args, "display", False) else record
+                           for record in records[:args.limit]]}
+
+
+def display_record(record, timezone_name):
+    """Add deterministic display fields without changing source values or guessing missing data."""
+    result = dict(record)
+    local_times, durations = {}, {}
+    for field in ("beginDt", "endDt"):
+        value = record.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
+            try:
+                local_times[field] = datetime.fromtimestamp(value / 1000, ZoneInfo(timezone_name)).isoformat()
+            except (ValueError, OverflowError, OSError):
+                pass
+    for field in ("breastLeftDuration", "breastRightDuration", "pumpLeftDuration", "pumpRightDuration"):
+        value = record.get(field)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0:
+            minutes, seconds = divmod(int(value / 1000), 60)
+            durations[field] = f"{minutes} min {seconds} sec"
+    result["display"] = {"local_times": local_times, "durations": durations}
+    if record.get('feedType') == 'BOTTLE':
+        from nara_bottle import decoded_volume
+        try:
+            result['display']['volume'] = {'amount': format(decoded_volume(record).normalize(), 'f'), 'unit': 'fl oz'}
+        except NaraError:
+            result['display']['volume'] = {'status': 'unknown'}
+    return result
 
 
 def public_result(value):

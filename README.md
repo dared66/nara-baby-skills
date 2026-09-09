@@ -1,15 +1,17 @@
 # Nara Baby skills
 
-Agent-independent Nara Baby onboarding and history reads, with a reusable macOS Keychain credential adapter. No server or agent-specific API is required. This is an unofficial integration, unaffiliated with Nara.
+Agent-independent Nara Baby onboarding, history reads, and verified bottle logging, with a reusable macOS Keychain credential adapter. No server or agent-specific API is required. This is an unofficial integration, unaffiliated with Nara.
 
 ## What works
 
 - Private local credential setup and direct retrieval by the API process.
 - Child discovery from profiles, explicit default selection, and history filtered by child.
 - User-selected IANA timezones, daylight-saving validation, and sanitized JSON output.
+- Local timestamps, readable durations, and decoded bottle volumes with `history --display`.
+- One-command bottle logging with child checks, duplicate detection, corrected volume encoding, and fresh readback.
 - Separate service/account entries for other skills using the credential library.
 
-The runnable credential backend requires **macOS and Python 3.10+**. Muse and hosted Instinct documents describe adaptations, not implemented connectors. Write/timer helpers are experimental and require explicit client opt-in; offline payload tests do not establish live write reliability.
+The runnable credential backend requires **macOS and Python 3.10+**. Muse and hosted Instinct documents describe adaptations, not implemented connectors. Bottle logging supports fluid ounces in increments of 0.1 and requires a user-authorized entry. Other write/timer helpers are experimental and require explicit client opt-in; offline payload tests do not establish live write reliability.
 
 ## Start
 
