@@ -19,6 +19,9 @@ def epoch_ms(value, timezone_name=None, *, fold=None):
     An explicit UTC offset identifies an instant. A naive datetime uses the
     configured zone. For a repeated hour, fold=0/1 selects first/second occurrence.
     """
+    # Python 3.10 requires an explicit offset for the ISO UTC suffix.
+    if isinstance(value, str) and value.endswith('Z'):
+        value = value[:-1] + '+00:00'
     dt = datetime.fromisoformat(value) if isinstance(value, str) else value
     if not isinstance(dt, datetime):
         raise TypeError("Expected an ISO datetime or datetime object")
