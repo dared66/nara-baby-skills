@@ -8,7 +8,7 @@ import zipfile
 RELEASE_FILES = ('README.md', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md', 'THIRD_PARTY.md', '.gitignore', '.github/workflows/tests.yml', 'scripts/test.py', 'scripts/package.py')
 SKILLS = {
     'keychain-credentials': ('SKILL.md', 'pyproject.toml', 'scripts/skill_credentials.py', 'tests/test_credentials.py'),
-    'nara-baby': ('SKILL.md', 'agents/openai.yaml', 'references/api.md', 'references/portability.md', 'references/muse.md', 'references/instinct-proposal.md', 'scripts/nara_bottle.py', 'scripts/nara_cli.py', 'scripts/nara_client.py', 'scripts/nara_keychain.py', 'scripts/nara_timezone.py', 'scripts/nara_config.py', 'scripts/run.py', 'scripts/rebuild.py', 'tests/test_bottle.py', 'tests/test_history_display.py', 'tests/test_history_window.py', 'tests/test_keychain_client.py', 'tests/test_timezone.py', 'tests/test_time_conversion.py', 'tests/test_release_safety.py', 'tests/fixtures/upstream_contract.py'),
+    'nara-baby': ('SKILL.md', 'agents/openai.yaml', 'references/api.md', 'references/portability.md', 'references/muse.md', 'references/instinct-proposal.md', 'scripts/nara_bottle.py', 'scripts/nara_diaper.py', 'scripts/nara_cli.py', 'scripts/nara_client.py', 'scripts/nara_keychain.py', 'scripts/nara_timezone.py', 'scripts/nara_config.py', 'scripts/run.py', 'scripts/rebuild.py', 'tests/test_bottle.py', 'tests/test_diaper.py', 'tests/test_history_display.py', 'tests/test_history_window.py', 'tests/test_keychain_client.py', 'tests/test_timezone.py', 'tests/test_time_conversion.py', 'tests/test_release_safety.py', 'tests/fixtures/upstream_contract.py'),
 }
 
 def main():

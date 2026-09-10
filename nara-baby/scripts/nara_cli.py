@@ -55,6 +55,16 @@ def parser():
     bottle.add_argument('--child')
     bottle.add_argument('--timezone')
     bottle.add_argument('--check-only', action='store_true', help='Read-only: check whether this exact bottle already exists')
+    diaper = subs.add_parser('log-diaper', help='Log one wet/dirty/dry diaper and verify it')
+    diaper.add_argument('--contents', required=True, choices=['wet','dirty','both','dry'])
+    diaper.add_argument('--color')
+    diaper.add_argument('--texture', choices=['mucous','mushy','pebble','runny','solid'])
+    diaper.add_argument('--at', required=True, help='Resolved ISO date and time; use inbound message time for now')
+    diaper.add_argument('--expect-child', required=True)
+    diaper.add_argument('--family')
+    diaper.add_argument('--child')
+    diaper.add_argument('--timezone')
+    diaper.add_argument('--check-only', action='store_true')
     for command_parser in subs.choices.values():
         command_parser.add_argument("--include-internal", action="store_true", help="Developer diagnostics only: include database identifiers")
     return result
@@ -127,10 +137,28 @@ def _execute(args):
     child = getattr(args, "child", None) or config.get("child")
     family = args.family or config.get("family")
     zone = args.timezone or config.get("timezone")
-    if args.command in ('history', 'log-bottle') and not child:
+    if args.command in ('history', 'log-bottle', 'log-diaper') and not child:
         return {"state": "needs_child_selection", "action": "Run onboard and ask which child to use."}
     if not zone:
         return {"state": "needs_timezone", "action": "Ask for a timezone and run configure --timezone IANA_ZONE."}
+    if args.command == 'log-diaper':
+        from nara_diaper import diaper_fields, log_diaper
+        from nara_timezone import epoch_ms
+        diaper_fields(args.contents, args.color, args.texture)
+        if 'T' not in args.at and ' ' not in args.at:
+            raise NaraError('Provide both the resolved date and time for the diaper.')
+        begin = epoch_ms(args.at, zone)
+        with connected_client(family=family, child=child, timezone_name=zone,
+                              allow_writes=not args.check_only) as api:
+            name = api.get_children()[child].get('name')
+            if not isinstance(name, str) or name.casefold() != args.expect_child.casefold():
+                raise NaraError('Selected child does not match the requested name.')
+            result = log_diaper(api, child=child, begin=begin, contents=args.contents,
+                               color=args.color, texture=args.texture, check_only=args.check_only)
+            if 'track' in result:
+                result['track'] = display_record(result['track'], api.activity_timezone)
+            result.update(child_label=name, timezone=api.activity_timezone)
+        return result
     if args.command == 'log-bottle':
         from nara_bottle import bottle_fields, log_bottle
         from nara_timezone import epoch_ms

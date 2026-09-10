@@ -1,6 +1,6 @@
 ---
 name: nara-baby
-description: Nara Baby history and logging; use log-bottle for verified bottle feeds. Also supports sleep, diapers, pumping, routines and timers.
+description: Nara Baby history and logging; use log-bottle and log-diaper for verified entries. Also supports sleep, diapers, pumping, routines and timers.
 ---
 
 # Nara Baby
@@ -8,6 +8,18 @@ description: Nara Baby history and logging; use log-bottle for verified bottle f
 Use the unofficial Python wrapper at https://github.com/jfchenier/nara-baby-tracker-api. It connects to the app's Firebase backend; it is not an official Nara API. Source reviewed at commit `8f0371cd05d112e3217e594473d0e1dd87615b61` on 2026-09-08.
 
 For configured history reads and bottle logging, use the self-contained commands below. Read [references/api.md](references/api.md) for other writes, direct Python API use, timers, troubleshooting, or calculations beyond the CLI display fields.
+
+## Quick diaper logging
+
+Use one command from this skill folder for a requested diaper entry:
+
+```sh
+python3 scripts/run.py log-diaper --contents both --color yellow --texture mushy --at 2026-01-15T10:30:00-08:00 --expect-child "Baby A"
+```
+
+`both` means wet and dirty in the **same** diaper. Other contents: `wet`, `dirty`, `dry`. Include color/texture only when supplied. For "now", use the inbound message timestamp, so retries/readback refer to the same event time. Ambiguous speech (such as conflicting colors) needs one short clarification; never silently drop a color or reinterpret it. Omitted rash/blowout observations are not guessed.
+
+This command selects the configured child, converts ISO time to integer milliseconds, checks for duplicates, submits once, and verifies the requested fields. Do not write custom Python, read source files, reconfigure the child, run onboarding, or fetch history separately for this supported operation. `saved` or `already_recorded` with `verified: true` completes it. On uncertainty use the same parameters with `--check-only`, never another write. The launcher selects the working runtime; plain `python3 -c` is not an alternative.
 
 ## Quick bottle logging
 
