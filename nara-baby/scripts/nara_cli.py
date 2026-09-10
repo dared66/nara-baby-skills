@@ -39,7 +39,9 @@ def parser():
         sub.add_argument("--timezone")
         if command == "history":
             sub.add_argument("--child")
-            sub.add_argument("--type", dest="track_type")
+            sub.add_argument("--type", dest="track_type", help="One type or comma-separated types, e.g. FEED,DIAPER,SLEEP")
+            sub.add_argument("--since", help="Inclusive ISO timestamp; filters activity start times")
+            sub.add_argument("--until", help="Exclusive ISO timestamp; filters activity start times")
             sub.add_argument("--limit", type=int, default=20)
             sub.add_argument("--display", action="store_true", help="Add local timestamps and readable durations")
     bottle = subs.add_parser('log-bottle', help='Log and verify a bottle without writing a custom script')
@@ -150,15 +152,42 @@ def _execute(args):
         return result
     if args.command == "history" and not 1 <= args.limit <= 1000:
         raise NaraError("History limit must be between 1 and 1000.")
+    since = until = None
+    if args.command == "history":
+        from nara_timezone import epoch_ms
+        for field in ("since", "until"):
+            value = getattr(args, field, None)
+            if value and "T" not in value and " " not in value:
+                raise NaraError("History boundaries require an ISO date and time.")
+        since = epoch_ms(args.since, zone) if args.since else None
+        until = epoch_ms(args.until, zone) if args.until else None
+        if since is not None and until is not None and since >= until:
+            raise NaraError("History until must be after since.")
     with connected_client(family=family, child=child if args.command == "history" else None, timezone_name=zone) as api:
         if args.command == "children":
             return {"family": api.family_key, "children": child_choices(api), "names_available": True}
         tracks = api.get_data()
-        records = [dict(t, key=k) for k, t in tracks.items() if isinstance(t, dict)
-                   and t.get("childKey") == child
-                   and (not args.track_type or t.get("type") == args.track_type)]
-        records.sort(key=lambda t: t.get("beginDt") or 0, reverse=True)
+        selected_types = {item.strip().upper() for item in (args.track_type or "").split(",") if item.strip()}
+        records = []
+        invalid_times = 0
+        for key, track in tracks.items():
+            if not isinstance(track, dict) or track.get("childKey") != child:
+                continue
+            if selected_types and track.get("type") not in selected_types:
+                continue
+            begin = track.get("beginDt")
+            if isinstance(begin, bool) or not isinstance(begin, (int, float)) or not math.isfinite(begin):
+                invalid_times += 1
+                continue
+            if since is not None and begin < since or until is not None and begin >= until:
+                continue
+            records.append(dict(track, key=key))
+        records.sort(key=lambda t: t["beginDt"], reverse=True)
         return {"family": api.family_key, "child": child, "child_label": api.get_children()[child].get("name"), "timezone": api.activity_timezone,
+                "coverage": {"basis": "activity_start", "since": args.since, "until": args.until,
+                             "matched": len(records), "returned": min(len(records), args.limit),
+                             "truncated": len(records) > args.limit, "invalid_timestamps": invalid_times,
+                             "source_completeness": "not_guaranteed"},
                 "tracks": [display_record(record, api.activity_timezone) if getattr(args, "display", False) else record
                            for record in records[:args.limit]]}
 
