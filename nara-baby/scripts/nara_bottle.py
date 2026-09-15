@@ -1,10 +1,24 @@
 """Bottle payloads and one-operation logging with semantic readback."""
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_CEILING
 import hashlib
 import json
 import time
 
 from nara_keychain import NaraError
+
+
+def normalize_amount(amount, rounding='reject'):
+    if rounding not in ('reject', 'up'):
+        raise NaraError('Unsupported bottle rounding preference.')
+    try:
+        value = Decimal(str(amount))
+        if not value.is_finite() or not 0 < value <= Decimal('1000000'):
+            raise ValueError
+        if rounding == 'up':
+            value = value.quantize(Decimal('0.1'), rounding=ROUND_CEILING)
+        return format(value, 'f')
+    except (InvalidOperation, ValueError):
+        raise NaraError('Bottle amount must be positive finite fluid ounces.') from None
 
 
 def bottle_fields(amount, breast_milk=True, formula_name=None):

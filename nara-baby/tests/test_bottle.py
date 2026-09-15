@@ -123,3 +123,31 @@ class BottleTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class RoundingRegression(unittest.TestCase):
+    fixture = BottleTests.fixture
+    def test_decimal_rounding_and_rejection(self):
+        from nara_bottle import normalize_amount
+        for raw, expected in [('2.25','2.3'),('2.3','2.3'),('2.3000001','2.4'),('0.01','0.1')]:
+            self.assertEqual(normalize_amount(raw,'up'),expected)
+        with self.assertRaises(NaraError): bottle_fields(normalize_amount('2.25'))
+        for raw in ['NaN','Infinity','0','-1']:
+            with self.assertRaises(NaraError):normalize_amount(raw,'up')
+
+    def test_cli_preference_rounds_once_and_retry_deduplicates(self):
+        api,_=self.fixture();api.get_children.return_value={'child':{'name':'Baby A'}}
+        args=parser().parse_args(['log-bottle','--milk','breast-milk','--amount','2.25','--unit','fl-oz','--at','1970-01-01T00:00:01Z','--expect-child','Baby A'])
+        with patch('nara_cli.load_config',return_value={'family':'family','child':'child','timezone':'UTC','bottle_rounding':'up'}),patch('nara_cli.connected_client') as connect:
+            api.activity_timezone='UTC';connect.return_value.__enter__.return_value=api
+            first=execute(args);second=execute(args)
+        self.assertEqual(first['amount'],'2.3');self.assertEqual(first['requested_amount'],'2.25')
+        self.assertEqual(second['status'],'already_recorded');api.log_activity.assert_called_once()
+
+class RoundingSettings(unittest.TestCase):
+    def test_setting_round_trip_without_login(self):
+        import tempfile
+        from nara_config import load_config
+        with tempfile.TemporaryDirectory() as folder, patch('nara_config.config_path',return_value=Path(folder)/'preferences.json'),patch('nara_cli.connected_client') as connect:
+            execute(parser().parse_args(['configure','--bottle-rounding','up']))
+            self.assertEqual(load_config()['bottle_rounding'],'up')
+            connect.assert_not_called()

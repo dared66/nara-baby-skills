@@ -7,7 +7,7 @@ from nara_keychain import NaraError
 COLORS = ('BLACK','BROWN','GRAY','GREEN','RED','YELLOW')
 TEXTURES = {'mucous':'MUCOUS','mushy':'MUSH','pebble':'PEBBLE','runny':'RUN','solid':'SOLID'}
 
-def diaper_fields(contents, color=None, texture=None):
+def diaper_fields(contents, color=None, texture=None, blowout=False):
     if contents not in ('wet','dirty','both','dry'):
         raise NaraError('Specify wet, dirty, both, or dry.')
     if contents not in ('dirty','both') and (color or texture):
@@ -21,10 +21,13 @@ def diaper_fields(contents, color=None, texture=None):
     if texture:
         if texture.lower() not in TEXTURES: raise NaraError('Unsupported diaper texture; clarify rather than guessing.')
         fields['diaperPoopTexture']=TEXTURES[texture.lower()]
+    if blowout:
+        if contents not in ('dirty','both'): raise NaraError('A blowout requires a dirty diaper.')
+        fields['diaperBlowout']=True
     return fields
 
-def log_diaper(api, *, child, begin, contents, color=None, texture=None, check_only=False):
-    fields=diaper_fields(contents,color,texture)
+def log_diaper(api, *, child, begin, contents, color=None, texture=None, blowout=False, check_only=False):
+    fields=diaper_fields(contents,color,texture,blowout)
     if isinstance(begin,bool) or not isinstance(begin,int): raise NaraError('Diaper time must be epoch milliseconds.')
     expected=dict(fields,childKey=child,type='DIAPER',beginDt=begin,tz=api.activity_timezone)
     track_id='diaper'+hashlib.sha256(json.dumps([api.family_key,child,begin,'DIAPER']).encode()).hexdigest()[:32]

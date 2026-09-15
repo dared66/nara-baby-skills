@@ -61,3 +61,20 @@ class DiaperTests(unittest.TestCase):
             connect.return_value.__enter__.return_value=api
             with self.assertRaises(NaraError):execute(args)
             api.log_activity.assert_not_called()
+
+class BlowoutRegression(unittest.TestCase):
+    fixture = DiaperTests.fixture
+    invoke = DiaperTests.invoke
+    def test_blowout_saved_verified_and_deduplicated(self):
+        api,data=self.fixture();result=self.invoke(api,blowout=True)
+        self.assertTrue(result['track']['diaperBlowout'])
+        self.assertEqual(self.invoke(api,blowout=True)['status'],'already_recorded')
+        api.log_activity.assert_called_once()
+    def test_blowout_needs_dirty(self):
+        with self.assertRaises(NaraError):diaper_fields('wet',blowout=True)
+    def test_missing_blowout_readback_rejected(self):
+        api,_=self.fixture();save=api.log_activity.side_effect
+        def missing(*a,**kw):kw.pop('diaperBlowout',None);return save(*a,**kw)
+        api.log_activity.side_effect=missing
+        with patch('nara_diaper.time.sleep'),self.assertRaises(NaraError):self.invoke(api,blowout=True)
+        api.log_activity.assert_called_once()

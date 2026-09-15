@@ -17,7 +17,7 @@ Use one command from this skill folder for a requested diaper entry:
 python3 scripts/run.py log-diaper --contents both --color yellow --texture mushy --at 2026-01-15T10:30:00-08:00 --expect-child "Baby A"
 ```
 
-`both` means wet and dirty in the **same** diaper. Other contents: `wet`, `dirty`, `dry`. Include color/texture only when supplied. For "now", use the inbound message timestamp, so retries/readback refer to the same event time. Ambiguous speech (such as conflicting colors) needs one short clarification; never silently drop a color or reinterpret it. Omitted rash/blowout observations are not guessed.
+`both` means wet and dirty in the **same** diaper. Other contents: `wet`, `dirty`, `dry`. Include color/texture/blowout only when supplied. Use `--blowout` only when explicitly reported. For "now", use the inbound message timestamp, so retries/readback refer to the same event time. Ambiguous speech (such as conflicting colors) needs one short clarification; never silently drop a color or reinterpret it. Omitted rash/blowout observations are not guessed.
 
 This command selects the configured child, converts ISO time to integer milliseconds, checks for duplicates, submits once, and verifies the requested fields. Do not write custom Python, read source files, reconfigure the child, run onboarding, or fetch history separately for this supported operation. `saved` or `already_recorded` with `verified: true` completes it. On uncertainty use the same parameters with `--check-only`, never another write. The launcher selects the working runtime; plain `python3 -c` is not an alternative.
 
@@ -29,7 +29,7 @@ For an authorized bottle entry, execute one command from this skill folder (subs
 python3 scripts/run.py log-bottle --milk breast-milk --amount 2.5 --unit fl-oz --at 2026-01-15T10:30:00-08:00 --expect-child "Baby A"
 ```
 
-Use `--milk formula` for formula, with `--formula-name` only when supplied. This command supports fluid ounces in increments of 0.1, without rounding. Resolve the requested date/time in the configured timezone; ask only for missing consequential details. The child name is checked against the selected live profile. The command validates configuration, checks existing bottles at that time, writes once with a stable ID, and verifies the requested fields and decoded amount through fresh sync. A `saved` or `already_recorded` result with `verified: true` completes the operation. Answer from the receipt's `amount`, `unit`, child and local time.
+Use `--milk formula` for formula, with `--formula-name` only when supplied. The helper stores fluid ounces in increments of 0.1. Pass the original requested amount: the local `bottle_rounding` preference in `~/.config/nara-baby/preferences.json` controls extra precision (`reject` by default; `up` only when the user requests rounding up). Save an explicitly requested preference with `python3 scripts/run.py configure --bottle-rounding up` (or `reject` to disable). The helper applies decimal rounding before duplicate checks and reports both requested and saved amounts. Do not pre-round or ask again when an applicable saved preference exists. Resolve the requested date/time in the configured timezone; ask only for missing consequential details. The child name is checked against the selected live profile. The command validates configuration, checks existing bottles at that time, writes once with a stable ID, and verifies the requested fields and decoded amount through fresh sync. A `saved` or `already_recorded` result with `verified: true` completes the operation. Answer from the receipt's `amount`, `unit`, child and local time.
 
 Do not write a temporary Python script, read implementation files, run a separate onboarding/history check, or separately convert timestamps for this supported command. For a failed or uncertain result, use the same command with **`--check-only`** to inspect without writing; do not rerun a write. A conflicting existing bottle requires inspecting/editing that record rather than creating another. Do not use logging commands for unrequested test entries.
 
@@ -101,3 +101,5 @@ For an unsupported operation, inspect current upstream source or a corresponding
 ## Validation
 
 Use mocked HTTP or payload capture for development. The upstream `tests/` examples can authenticate and write real baby records; do not run them as ordinary tests. Skill installation does not authorize live test entries. Live verification requires configured credentials and an actual user-requested operation.
+
+For a combined request, retain each successful receipt and recover only the failed activity; never repeat an already verified sibling write. Reuse this skill within the same conversation unless its instructions changed.

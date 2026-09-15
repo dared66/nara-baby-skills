@@ -33,6 +33,7 @@ def parser():
     settings.add_argument("--child")
     settings.add_argument("--name", help="Choose the default child by their profile name")
     settings.add_argument("--label")
+    settings.add_argument("--bottle-rounding", choices=("reject", "up"))
     for command in ("children", "history"):
         sub = subs.add_parser(command)
         sub.add_argument("--family")
@@ -59,6 +60,7 @@ def parser():
     diaper.add_argument('--contents', required=True, choices=['wet','dirty','both','dry'])
     diaper.add_argument('--color')
     diaper.add_argument('--texture', choices=['mucous','mushy','pebble','runny','solid'])
+    diaper.add_argument('--blowout', action='store_true')
     diaper.add_argument('--at', required=True, help='Resolved ISO date and time; use inbound message time for now')
     diaper.add_argument('--expect-child', required=True)
     diaper.add_argument('--family')
@@ -91,7 +93,7 @@ def _execute(args):
         return {"removed": True}
     config = load_config()
     if args.command == "configure":
-        if not any((args.name, args.timezone, args.family, args.child, args.label)):
+        if not any((args.name, args.timezone, args.family, args.child, args.label, args.bottle_rounding)):
             raise NaraError("Choose a child name or timezone to configure.")
         if args.label and not args.child:
             raise NaraError("A custom label requires an explicitly selected child.")
@@ -115,6 +117,8 @@ def _execute(args):
             if not args.child:
                 raise NaraError("Provide the verified child key when assigning a label.")
             config["child_label"] = args.label
+        if args.bottle_rounding:
+            config["bottle_rounding"] = args.bottle_rounding
         save_config(config)
         return {"configured": True, "preferences": config}
     if args.command == "onboard":
@@ -144,7 +148,7 @@ def _execute(args):
     if args.command == 'log-diaper':
         from nara_diaper import diaper_fields, log_diaper
         from nara_timezone import epoch_ms
-        diaper_fields(args.contents, args.color, args.texture)
+        diaper_fields(args.contents, args.color, args.texture, args.blowout)
         if 'T' not in args.at and ' ' not in args.at:
             raise NaraError('Provide both the resolved date and time for the diaper.')
         begin = epoch_ms(args.at, zone)
@@ -154,15 +158,18 @@ def _execute(args):
             if not isinstance(name, str) or name.casefold() != args.expect_child.casefold():
                 raise NaraError('Selected child does not match the requested name.')
             result = log_diaper(api, child=child, begin=begin, contents=args.contents,
-                               color=args.color, texture=args.texture, check_only=args.check_only)
+                               color=args.color, texture=args.texture, blowout=args.blowout,
+                               check_only=args.check_only)
             if 'track' in result:
                 result['track'] = display_record(result['track'], api.activity_timezone)
             result.update(child_label=name, timezone=api.activity_timezone)
         return result
     if args.command == 'log-bottle':
-        from nara_bottle import bottle_fields, log_bottle
+        from nara_bottle import bottle_fields, log_bottle, normalize_amount
         from nara_timezone import epoch_ms
-        bottle_fields(args.amount, args.milk == 'breast-milk', args.formula_name)
+        requested_amount = str(args.amount)
+        amount = normalize_amount(requested_amount, config.get('bottle_rounding', 'reject'))
+        bottle_fields(amount, args.milk == 'breast-milk', args.formula_name)
         if 'T' not in args.at and ' ' not in args.at:
             raise NaraError('Provide both the resolved date and time for the bottle.')
         begin = epoch_ms(args.at, zone)
@@ -171,9 +178,10 @@ def _execute(args):
             name = api.get_children()[child].get('name')
             if not isinstance(name, str) or name.casefold() != args.expect_child.casefold():
                 raise NaraError('Selected child does not match the requested name. Resolve the correct profile before logging.')
-            result = log_bottle(api, child=child, begin=begin, amount=args.amount,
+            result = log_bottle(api, child=child, begin=begin, amount=amount,
                                 breast_milk=args.milk == 'breast-milk',
                                 formula_name=args.formula_name, check_only=args.check_only)
+            result.update(requested_amount=requested_amount, rounding=config.get('bottle_rounding', 'reject'))
             if 'track' in result:
                 result['track'] = display_record(result['track'], api.activity_timezone)
             result.update(child_label=name, timezone=api.activity_timezone)
