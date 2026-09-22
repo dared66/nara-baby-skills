@@ -203,6 +203,50 @@ class ClientTests(unittest.TestCase):
                 nara_cli.execute(nara_cli.parser().parse_args(["configure", "--name", "Example"]))
             save.assert_not_called()
 
+    def test_creation_uses_only_sync_queue_with_stable_identity(self):
+        with nara_client.connected_client(child="child-b", allow_writes=True) as api:
+            with patch.object(FakeTransport, "request", return_value=Response({})) as request:
+                result = api.log_activity("DIAPER", begin_dt=1000, end_dt=2000,
+                                          track_id="stable-id", diaperPoopTexture="MUSHY")
+                self.assertEqual(result, "stable-id")
+                request.assert_called_once()
+                method, url = request.call_args.args
+                self.assertEqual(method, "PUT")
+                self.assertIn("/instreamz/familyz/family/trackz/user/", url)
+                self.assertIn("/value/stable-id.json?", url)
+                payload = request.call_args.kwargs["json"]
+                for key, value in {"key": "stable-id", "childKey": "child-b",
+                                   "familyKey": "family", "beginDt": 1000, "endDt": 2000,
+                                   "ord": -1000, "tz": "America/Los_Angeles",
+                                   "diaperPoopTexture": "MUSH", "type": "DIAPER"}.items():
+                    self.assertEqual(payload[key], value)
+
+    def test_creation_validates_timezone_identity_and_write_authorization(self):
+        with nara_client.connected_client(child="child-b", allow_writes=True) as api:
+            with patch.object(FakeTransport, "request", return_value=Response({})) as request:
+                for fields in ({"childKey": "child-a"}, {"familyKey": "other"},
+                               {"key": "other"}, {"track_id": "../invalid"}, {"tz": "/bad-zone"}):
+                    with self.subTest(fields=fields), self.assertRaises((nara_keychain.NaraError, ValueError)):
+                        api.log_activity("DIAPER", begin_dt=1000, **fields)
+                request.assert_not_called()
+                api.log_activity("SLEEP", begin_dt=1000, tz="Europe/London")
+                self.assertEqual(request.call_args.kwargs["json"]["tz"], "Europe/London")
+        with nara_client.connected_client(child="child-b") as api:
+            with patch.object(FakeTransport, "request") as request:
+                with self.assertRaisesRegex(nara_keychain.NaraError, "Writes require"):
+                    api.log_activity("DIAPER", begin_dt=1000)
+                request.assert_not_called()
+
+    def test_creation_http_failure_never_falls_back_or_retries(self):
+        with nara_client.connected_client(child="child-b", allow_writes=True) as api:
+            failed = Response({})
+            failed.status_code = 401
+            failed.raise_for_status = lambda: (_ for _ in ()).throw(RuntimeError("token-canary"))
+            with patch.object(FakeTransport, "request", return_value=failed) as request:
+                with self.assertRaises(RuntimeError):
+                    api.log_activity("DIAPER", begin_dt=1000, track_id="stable-id")
+                request.assert_called_once()
+
     def test_sync_only_record_edit_uses_existing_id_and_preserves_fields(self):
         original = {"childKey": "child-b", "type": "DIAPER", "beginDt": 123, "tz": "UTC", "note": "preserve", "etag": "old"}
         saved = dict(original, diaperPoopColor="YELLOW", diaperPoopTexture="MUSH")

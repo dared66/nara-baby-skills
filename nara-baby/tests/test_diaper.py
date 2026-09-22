@@ -41,6 +41,45 @@ class DiaperTests(unittest.TestCase):
         api,_=self.fixture();api.log_activity.side_effect=None
         with patch('nara_diaper.time.sleep'),self.assertRaises(NaraError):self.invoke(api)
         api.log_activity.assert_called_once()
+    def test_delayed_sync_is_verified_without_another_write(self):
+        api, data = self.fixture()
+        reads = 0
+        def delayed():
+            nonlocal reads
+            reads += 1
+            return dict(data) if reads == 7 else {}
+        api.get_data.side_effect = delayed
+        with patch('nara_diaper.time.sleep') as sleep:
+            self.assertTrue(self.invoke(api)['verified'])
+        self.assertEqual(reads, 7)
+        self.assertEqual(sleep.call_count, 5)
+        api.log_activity.assert_called_once()
+
+    def test_submission_failure_is_sanitized_and_remains_uncertain(self):
+        for status in (401, None):
+            api, _ = self.fixture()
+            error = RuntimeError('https://private.example/?auth=secret-canary')
+            if status:
+                error.response = Mock(status_code=status)
+            api.log_activity.side_effect = error
+            with patch('nara_diaper.time.sleep'), self.assertRaises(NaraError) as caught:
+                self.invoke(api)
+            message = str(caught.exception)
+            self.assertIn('uncertain', message)
+            self.assertIn('--check-only', message)
+            self.assertNotIn('secret-canary', message)
+            if status:
+                self.assertIn('HTTP 401', message)
+            api.log_activity.assert_called_once()
+
+    def test_failed_readback_never_claims_rejected_or_saved(self):
+        api, _ = self.fixture()
+        api.log_activity.side_effect = TimeoutError('secret-canary')
+        api.get_data.side_effect = [{}, RuntimeError('secret-canary')]
+        with self.assertRaisesRegex(NaraError, 'outcome uncertain'):
+            self.invoke(api)
+        api.log_activity.assert_called_once()
+
     def test_invalid_observations(self):
         for contents,color in [('both','blue'),('wet','yellow')]:
             with self.assertRaises(NaraError):diaper_fields(contents,color)

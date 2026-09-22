@@ -44,12 +44,24 @@ def log_diaper(api, *, child, begin, contents, color=None, texture=None, blowout
     if check_only: return dict(status='not_found',verified=False)
     if getattr(api,'_selected_child',None)!=child or not getattr(api,'_allow_writes',False):
         raise NaraError('A selected child and authorized write client are required.')
-    try: api.log_activity('DIAPER',begin_dt=begin,track_id=track_id,**fields)
-    except Exception: pass
-    for attempt in range(3):
+    submission_error = None
+    try:
+        api.log_activity('DIAPER', begin_dt=begin, track_id=track_id, **fields)
+    except Exception as exc:
+        # Do not discard the only evidence that distinguishes a rejected write
+        # from a delayed history sync. Keep the diagnostic sanitized.
+        response = getattr(exc, 'response', None)
+        status = getattr(response, 'status_code', None)
+        submission_error = f'HTTP {status}' if isinstance(status, int) else 'transport error'
+    for attempt in range(6):
         try:
-            fresh=api.get_data().get(track_id)
-            if matches(fresh): return receipt(fresh,'saved')
-        except Exception: break
-        if attempt<2: time.sleep(.25)
-    raise NaraError('Diaper outcome uncertain. Use the same time with --check-only; do not retry a write.')
+            fresh = api.get_data().get(track_id)
+            if matches(fresh):
+                return receipt(fresh, 'saved')
+        except Exception:
+            break
+        if attempt < 5:
+            time.sleep(.5)
+    if submission_error:
+        raise NaraError(f'Diaper outcome uncertain ({submission_error}); readback did not confirm it. Use the same time with --check-only; do not retry a write.')
+    raise NaraError('Diaper write was submitted but not confirmed by history sync. Use the same time with --check-only; do not retry a write.')

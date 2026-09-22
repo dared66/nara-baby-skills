@@ -144,11 +144,42 @@ def load_api(transport):
             )
             return parse_tracks(response.json())
 
-        def log_activity(self, *args, **kwargs):
+        def log_activity(self, track_type, begin_dt=None, end_dt=None, track_id=None, **kwargs):
             selected = getattr(self, "_selected_child", None)
             if not selected or kwargs.get("childKey", selected) != selected:
                 raise NaraError("Select the intended child before logging an activity.")
-            return super().log_activity(*args, **normalize_activity_fields(kwargs))
+            if begin_dt is None:
+                begin_dt = int(time.time() * 1000)
+            if track_id is None:
+                track_id = "-Ovk" + uuid.uuid4().hex[:16]
+            if not isinstance(track_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", track_id):
+                raise NaraError("Invalid activity identifier.")
+            fields = normalize_activity_fields(kwargs)
+            if set(fields) & {"key", "familyKey", "userKey", "createUserKey", "type", "beginDt", "ord", "updateDt", "etag", "serverUpdateDt"}:
+                raise NaraError("Do not override generated activity identity or metadata.")
+            fields["tz"] = resolve_timezone(fields.get("tz", self.activity_timezone)).key
+            payload = {
+                "type": track_type,
+                "beginDt": begin_dt,
+                "userKey": self.uid,
+                "createUserKey": self.uid,
+                "ord": -begin_dt,
+                "tz": self.activity_timezone,
+                "updateDt": int(time.time() * 1000),
+                "key": track_id,
+                "childKey": selected,
+                "familyKey": self.family_key,
+                **fields,
+            }
+            if end_dt is not None:
+                payload["endDt"] = end_dt
+            # Current Firebase rules reject direct creation under familyz/trackz
+            # with HTTP 401. The app-supported instream queue persists and syncs
+            # the activity; use one deterministic activity ID for safe readback.
+            group = uuid.uuid4().hex
+            url = f"{self.DB_URL}/instreamz/familyz/{self.family_key}/trackz/{self.uid}/{group}/value/{track_id}.json?auth={self.id_token}"
+            self._do_request("PUT", url, json=payload)
+            return track_id
 
         def log_bottle_feed(self, breast_milk=True, volume_floz=0, formula_name=None, begin_dt=None, **kwargs):
             from nara_bottle import bottle_fields
